@@ -26,7 +26,7 @@
 
 > 要求为低曝光下的视频，并正确设置各项参数（在 [config.yaml](./config.yaml) 中）。亮度过高、或参数不正确会导致识别失败。
 
-**有关能量机关算法的详细介绍，可以查看 [46 环的秘密—识别篇](https://zmsbruce.github.io/posts/46%E7%8E%AF%E7%9A%84%E7%A7%98%E5%AF%86-%E8%AF%86%E5%88%AB%E7%AF%87/) 和 [46 环的秘密—解算与拟合篇](https://zmsbruce.github.io/posts/46%E7%8E%AF%E7%9A%84%E7%A7%98%E5%AF%86-%E8%A7%A3%E7%AE%97%E4%B8%8E%E6%8B%9F%E5%90%88%E7%AF%87/) 这两篇文章。**
+**有关能量机关算法的详细介绍，可以查看 [一种RM2024能量机关的识别与角度拟合方法](https://bbs.robomaster.com/article/371982)。**
 
 ### <div align="center"> 2. 性能 🚀 </div>
 
