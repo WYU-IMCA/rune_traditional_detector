@@ -1,3 +1,6 @@
+## 根据哈工大2024年能量机关开源，对ARMOR识别部分进行修改
+
+
 ![](./img/cover.png)
 
 <div align="center" float="left">
@@ -112,3 +115,6 @@ make -j$(nproc)
 ### <div align="center"> 4. 联系我 📧 </div>
 
 如果对代码有疑问，或者想指出代码中的错误，可以通过邮件联系我：[zmsbruce@163.com](zmsbruce@163.com)。
+
+
+
