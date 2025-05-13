@@ -7,6 +7,14 @@
 
 namespace power_rune {
 
+struct PolarPoint {
+    PolarPoint() = default;
+    PolarPoint(double theta, double rho, cv::Point2f pt) : theta(theta), rho(rho), pt(pt) {}
+    double theta;    // 极角
+    double rho;      // 半径
+    cv::Point2f pt;  // 原始点坐标
+};
+
 /**
  * @brief 灯条
  */
@@ -36,22 +44,24 @@ struct Lightline {
  */
 struct Armor {
     Armor() = default;
-    void set(const Lightline& l1, const Lightline& l2);
-    inline std::vector<cv::Point2f> getCornerPoints() { return {m_tlIn, m_trIn, m_blOut, m_brOut}; }
-    void setCornerPoints(const std::vector<cv::Point2f>& points);
-    Lightline m_inside;    // 内部灯条
-    Lightline m_outside;   // 外部灯条
-    cv::Point2f m_tlIn;    // 内部灯条左上角点
-    cv::Point2f m_trIn;    // 内部灯条右上角点
-    cv::Point2f m_blIn;    // 内部灯条左下角点
-    cv::Point2f m_brIn;    // 内部灯条右下角点
-    cv::Point2f m_tlOut;   // 外部灯条左上角点
-    cv::Point2f m_trOut;   // 外部灯条右上角点
-    cv::Point2f m_blOut;   // 外部灯条左下角点
-    cv::Point2f m_brOut;   // 外部灯条右下角点
+    void set(std::vector<PolarPoint>& pt, cv::Point2f& center) {
+        points = pt;
+        m_center = center;
+        m_top = points[0].pt;
+        m_right = points[1].pt;
+        m_in = points[2].pt;
+        m_left = points[3].pt;
+        m_radius = pointPointDistance(m_top, m_center);
+    }
+    cv::Point2f m_top;
+    cv::Point2f m_in;
+    cv::Point2f m_left;
+    cv::Point2f m_right;
     cv::Point2f m_center;  // 装甲板中心点
-    double m_x;            // 装甲板中心 x 坐标
-    double m_y;            // 装甲板中心 y 坐标
+    std::vector<PolarPoint> points;
+    double m_x;  // 装甲板中心 x 坐标
+    double m_y;  // 装甲板中心 y 坐标
+    double m_radius;
 };
 
 /**
@@ -84,11 +94,52 @@ struct Arrow {
     double m_fillRatio;                // 填充比例
 };
 
+struct ArmorContour {
+    ArmorContour() = default;
+    ArmorContour(const std::vector<cv::Point>& contour, const cv::Rect2f& localRoi,
+                 const cv::Rect2f& globalRoi = cv::Rect2f(0, 0, Param::IMAGE_WIDTH, Param::IMAGE_HEIGHT))
+        : m_contour(contour),
+          localRoi(localRoi),
+          globalRoi(globalRoi),
+          m_contourArea(cv::contourArea(contour)),
+          m_rotatedRect(cv::minAreaRect(contour)),
+          M(cv::moments(contour)) {
+        // 长的为 length，短的为 width
+        m_width = m_rotatedRect.size.width, m_length = m_rotatedRect.size.height;
+        if (m_width > m_length) {
+            std::swap(m_width, m_length);
+        }
+        m_aspectRatio = m_length / m_width;
+        m_angle = m_rotatedRect.angle;
+        center = cv::Point2f(M.m10 / M.m00, M.m01 / M.m00);
+    }
+    std::vector<cv::Point> m_contour;  // 轮廓点集
+    cv::Rect2f localRoi;
+    cv::Rect2f globalRoi;
+    double m_contourArea;           // 轮廓面积
+    cv::RotatedRect m_rotatedRect;  // 外接旋转矩形
+    double m_length;                // 长度
+    double m_width;                 // 宽度
+    double m_angle;                 // 旋转矩形角度
+    double m_aspectRatio;           // 旋转矩形长宽比
+    cv::Moments M;
+    cv::Point2f center;                   // Moment center in point2f
+    std::vector<PolarPoint> polarPoints;  // get 4 points finnally
+    bool calcSrcPointsAndCenter() {
+        for (auto&& point : polarPoints) {
+            point.pt += localRoi.tl() + globalRoi.tl();
+        }
+        center += localRoi.tl() + globalRoi.tl();
+
+        return true;
+    };
+};
+
 void findArrowLightlines(const cv::Mat& binary, std::vector<Lightline>& lightlines, const cv::Rect2f& roi);
 bool findArrow(Arrow& arrow, const std::vector<Lightline>& lightlines, const cv::Rect2f& roi);
 bool sameArrow(const Lightline& l1, const Lightline& l2);
 bool sameArmor(const Lightline& l1, const Lightline& l2);
-bool findArmor(Armor& armor, const std::vector<Lightline>& frames, const Arrow& arrow);
+bool findArmor(Armor& armor, std::vector<ArmorContour>& armor_contours, const Arrow& arrow);
 bool findArmorLightlines(const cv::Mat& binary, std::vector<Lightline>& frames, const cv::Rect2f& globalRoi,
                          const cv::Rect2f& localRoi);
 bool findCenterLightlines(const cv::Mat& binary, std::vector<Lightline>& lightlines,
@@ -102,6 +153,10 @@ void resetRoi(cv::Rect2f& rect, const cv::Mat& mat);
 void resetRoi(cv::Rect2f& rect, const cv::Rect2f& lastRoi);
 void resetRoi(cv::Rect2f& rect, int rows, int cols);
 bool inRect(const cv::Point2f& point, const cv::Rect2f& rect);
+bool matchPoints(std::vector<PolarPoint>& points);
+bool matchPoints(std::vector<PolarPoint>& points, double& ratio);
+std::vector<std::vector<PolarPoint>> getCombinationsIterative(
+    const std::vector<std::vector<PolarPoint>>& input);
 
 /**
  * @brief 检测类，负责对图像的处理和目标的检测，得到所有特征点的像素坐标，以及点亮的装甲板数目。
@@ -119,23 +174,22 @@ class Detector {
      * @return std::vector<cv::Point2f>
      */
     inline std::vector<cv::Point2f> getCameraPoints() {
-        return {m_armor.m_tlIn,  m_armor.m_trIn,  (m_armor.m_tlOut + m_armor.m_trOut) * 0.5,
-                m_armor.m_blOut, m_armor.m_brOut, m_centerR.m_center};
+        return {m_armor.m_top, m_armor.m_right, m_armor.m_in, m_armor.m_left, m_centerR.m_center};
     }
 
    private:
-    cv::Mat m_imageRaw;      // 原图
-    cv::Mat m_imageArrow;    // 检测箭头用的二值化图片
-    cv::Mat m_imageArmor;    // 检测装甲板边框用的二值化图片
-    cv::Mat m_imageCenter;   // 检测中心 R 用的二值化图片
-    cv::Mat m_imageShow;     // 可视化图片
-    cv::Mat m_localMask;     // 局部 roi 的掩码
-    cv::Rect2f m_globalRoi;  // 全局 roi ，用来圈定识别的范围，加快处理速度
-    cv::Rect2f m_armorRoi;   // 装甲板 roi
-    cv::Rect2f m_centerRoi;  // 中心 R roi
-    Arrow m_arrow;           // 箭头
-    Armor m_armor;           // 装甲板
-    CenterR m_centerR;       // 中心 R
+    cv::Mat m_imageRaw;                                 // 原图
+    cv::Mat m_imageArrow;                               // 检测箭头用的二值化图片
+    cv::Mat m_imageArmor;                               // 检测装甲板边框用的二值化图片
+    cv::Mat m_imageCenter;                              // 检测中心 R 用的二值化图片
+    cv::Mat m_imageShow;                                // 可视化图片
+    cv::Mat m_localMask;                                // 局部 roi 的掩码
+    cv::Rect2f m_globalRoi;                             // 全局 roi ，用来圈定识别的范围，加快处理速度
+    cv::Rect2f m_armorRoi;                              // 装甲板 roi
+    cv::Rect2f m_centerRoi;                             // 中心 R roi
+    Arrow m_arrow;                                      // 箭头
+    Armor m_armor;                                      // 装甲板
+    CenterR m_centerR;                                  // 中心 R
     std::chrono::steady_clock::time_point m_startTime;  // 检测开始的时间戳
     std::chrono::steady_clock::time_point m_frameTime;  // 当前帧的时间戳
     int m_lightArmorNum;                                // 点亮的装甲板数目
@@ -147,6 +201,8 @@ class Detector {
     bool detectCenterR();
     void setArmor();
     void setGlobalRoi();
+    bool findArmorContours(const cv::Mat& image, std::vector<ArmorContour>& armor_contours,
+                           const cv::Rect2f& globalRoi, const cv::Rect2f& localRoi);
     void draw(const Lightline& lightline, const cv::Scalar& color, const int thickness = 1,
               const cv::Rect2f& localRoi = cv::Rect2f(0, 0, Param::IMAGE_WIDTH, Param::IMAGE_HEIGHT));
     void draw(const cv::RotatedRect& rotatedRect, const cv::Scalar& color, const int thickness = 1,

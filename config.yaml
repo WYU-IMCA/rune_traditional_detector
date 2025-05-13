@@ -1,10 +1,10 @@
 %YAML 1.2
 color: red
-mode: big
-fps: 30
+mode: small
+fps: 165
 image:
-  width: 1280
-  height: 1024
+  width: 1440
+  height: 1080
 detect:
   brightness_threshold:
     blue: 
@@ -12,7 +12,7 @@ detect:
       armor: 110
     red:
       arrow: 150
-      armor: 90
+      armor: 30
   local_roi:
     distance_ratio: 1.2
     width: 200

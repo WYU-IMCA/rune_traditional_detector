@@ -9,7 +9,8 @@ namespace power_rune {
  * 2: 在 1 的基础上显示灯条、roi
  * 3: 在 2 的基础上显示二值化图片
  */
-#define SHOW_IMAGE 1
+
+#define SHOW_IMAGE 2
 
 #define CONSOLE_OUTPUT 1
 
@@ -39,6 +40,11 @@ struct Param {
     inline static double ARMOR_OUTSIDE_HEIGHT;
 
     inline static const double POWER_RUNE_RADIUS{700.0};
+    inline static const double POINT_POINT_THETA_THRESHOLD_MIN = 80.;
+    inline static const double POINT_POINT_THETA_THRESHOLD_MAX = 100.;
+    inline static const double LEAF_RADIUS = 150.;  // mm
+    inline static const double armor_contour_area_min = 1000.0, area_ratio_min = 0.9, area_ratio_max = 1.1;
+    inline static const double armor_contour_area_max = 10000.0;
 
     inline static Mode MODE;
 

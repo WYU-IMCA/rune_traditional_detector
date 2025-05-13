@@ -15,12 +15,11 @@ extern std::mutex MUTEX;
  * @param[in] filename
  */
 Calculator::Calculator()
-    : m_worldPoints{{(float)(-0.5 * Param::ARMOR_INSIDE_WIDTH), (float)Param::ARMOR_INSIDE_Y, 0.0},
-                    {(float)(0.5 * Param::ARMOR_INSIDE_WIDTH), (float)Param::ARMOR_INSIDE_Y, 0.0},
-                    {0.0, (float)(-Param::ARMOR_OUTSIDE_Y - Param::ARMOR_OUTSIDE_HEIGHT), 0.0},
-                    {(float)(-0.5 * Param::ARMOR_OUTSIDE_WIDTH), (float)-Param::ARMOR_OUTSIDE_Y, 0.0},
-                    {(float)(0.5 * Param::ARMOR_OUTSIDE_WIDTH), (float)-Param::ARMOR_OUTSIDE_Y, 0.0},
-                    {0.0, (float)Param::POWER_RUNE_RADIUS, 0.0}},
+    : m_worldPoints{{{0.0, -(float)Param::LEAF_RADIUS, 0.0},
+                     {(float)Param::LEAF_RADIUS, 0.0, 0.0},
+                     {0.0, (float)Param::LEAF_RADIUS, 0.0},
+                     {-(float)Param::LEAF_RADIUS, 0.0, 0.0},
+                     {0.0, (float)Param::POWER_RUNE_RADIUS, 0.0}}},
       m_direction{Direction::UNKNOWN},
       m_convexity{Convexity::UNKNOWN},
       m_totalShift{0},

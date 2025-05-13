@@ -86,9 +86,10 @@ void Detector::preprocess(const Frame& frame) {
 #if SHOW_IMAGE >= 3
     cv::imshow("arrow binary", m_imageArrow);
     cv::imshow("armor binary", m_imageArmor);
+    z
 #endif
-    // 设置局部 roi
-    m_localMask.setTo(0);
+        // 设置局部 roi
+        m_localMask.setTo(0);
 }
 
 /**
@@ -192,12 +193,12 @@ bool Detector::detectArmor() {
     // armor roi 区域的图像为检测图像，center roi 区域为备用图像
     cv::Mat detect = (m_imageArmor & m_localMask)(m_armorRoi);
     cv::Mat backup = (m_imageArmor & m_localMask)(m_centerRoi);
-    std::vector<Lightline> lightlines;
     // 调换标志位，如果检测不到，则调换检测图像和备用图像，并将其置为 true
     bool reverse = false;
 RESTART:
     // 寻找符合装甲板边框要求的灯条
-    if (findArmorLightlines(detect, lightlines, m_globalRoi, m_armorRoi) == false) {
+    std::vector<ArmorContour> armor_contours;
+    if (findArmorContours(detect, armor_contours, m_globalRoi, m_armorRoi) == false) {
         // 如果找不到并且已经调换过图像了，则检测失败
         if (reverse == true) {
             return false;
@@ -209,13 +210,8 @@ RESTART:
         // 回到检测装甲板灯条处
         goto RESTART;
     }
-#if SHOW_IMAGE >= 2
-    for (const auto& lightline : lightlines) {
-        draw(lightline, Param::DRAW_COLOR, 1, m_armorRoi);
-    }
-#endif
-    // 根据灯条匹配装甲板
-    if (findArmor(m_armor, lightlines, m_arrow) == false) {
+
+    if (findArmor(m_armor, armor_contours, m_arrow) == false) {
         if (reverse == true) {
             return false;
         }
@@ -224,9 +220,6 @@ RESTART:
         reverse = true;
         goto RESTART;
     }
-#if SHOW_IMAGE >= 1
-    cv::circle(m_imageShow, m_armor.m_center, m_armor.m_outside.m_length * 0.45, Param::WHITE, 2);
-#endif
     return true;
 }
 
@@ -262,58 +255,29 @@ bool Detector::detectCenterR() {
  * Lightline 构造函数的角点一致。
  */
 void Detector::setArmor() {
-    // 装甲板里外边框的重排序，之前根据面积确定边框，但可能不准确，现在根据到中心的距离确定
-    if (pointPointDistance(m_armor.m_inside.m_center, m_centerR.m_center) >
-        pointPointDistance(m_armor.m_outside.m_center, m_centerR.m_center)) {
-        std::swap(m_armor.m_inside, m_armor.m_outside);
-        std::swap(m_armor.m_tlIn, m_armor.m_tlOut);
-        std::swap(m_armor.m_trIn, m_armor.m_trOut);
-        std::swap(m_armor.m_blIn, m_armor.m_blOut);
-        std::swap(m_armor.m_brIn, m_armor.m_brOut);
-    }
-    /**
-     * 当中心 R 的纵坐标小于装甲板的纵坐标时，左上角和右下角、左下角和右上角的角点是相反的，需要交换这两对点。
-     * 但由于图像上存在误差，因此实际上设置中心 R
-     * 的纵坐标明显小于装甲板的纵坐标时才交换，其它情况下使用另一种判断方式，确保正确判断。
-     */
     if (m_centerR.m_center.y < m_armor.m_center.y - Param::ARMOR_CENTER_VERTICAL_DISTANCE_THRESHOLD) {
-        std::swap(m_armor.m_tlIn, m_armor.m_brIn);
-        std::swap(m_armor.m_tlOut, m_armor.m_brOut);
-        std::swap(m_armor.m_trIn, m_armor.m_blIn);
-        std::swap(m_armor.m_trOut, m_armor.m_blOut);
+        std::swap(m_armor.m_in, m_armor.m_top);
+        std::swap(m_armor.m_left, m_armor.m_right);
     }
-    /**
-     * 另一种判断方式根据装甲板的横坐标和中心的横坐标，以及装甲板左上角和左下角横坐标的位置关系得到。
-     * 在中心 R 的纵坐标明显大于装甲板中心时不需要交换，因此在纵坐标关系不明显时才进行判断。
-     * 在上面的约束下，如果装甲板横坐标大于中心，则装甲板明显在中心右侧，此时根据之前的角点设置，左上角点横坐标大于左下角点横坐标时，判断装甲板在中心上面，否则为下面。
-     * 装甲板横坐标小于中心时同理。
-     * 注：前一种判断方式在纵坐标差距不明显时会出现误差，而后一种在横坐标差距不明显时会出现误差。
-     * 因此将两者结合起来使用，即在纵坐标差距明显时使用前一种，纵坐标差距不明显时使用后一种，可以实现全场景下的覆盖。
-     */
-    else if (m_centerR.m_center.y < m_armor.m_center.y + Param::ARMOR_CENTER_VERTICAL_DISTANCE_THRESHOLD) {
-        if (((m_centerR.m_center.x < m_armor.m_center.x &&
-              m_armor.m_inside.m_tl.x > m_armor.m_inside.m_bl.x) ||
-             (m_centerR.m_center.x > m_armor.m_center.x &&
-              m_armor.m_inside.m_tl.x < m_armor.m_inside.m_bl.x)) == false) {
-            std::swap(m_armor.m_tlIn, m_armor.m_brIn);
-            std::swap(m_armor.m_trIn, m_armor.m_blIn);
-        }
-        if (((m_centerR.m_center.x < m_armor.m_center.x &&
-              m_armor.m_outside.m_tl.x > m_armor.m_outside.m_bl.x) ||
-             (m_centerR.m_center.x > m_armor.m_center.x &&
-              m_armor.m_outside.m_tl.x < m_armor.m_outside.m_bl.x)) == false) {
-            std::swap(m_armor.m_tlOut, m_armor.m_brOut);
-            std::swap(m_armor.m_trOut, m_armor.m_blOut);
-        }
+
+    std::set<double, std::greater<double>> lengths;
+    for (size_t i = 0; i < m_armor.points.size(); i++) {
+        lengths.insert(pointPointDistance(m_centerR.m_center, m_armor.points[i].pt));
     }
-#if CONSOLE_OUTPUT >= 2
-    MUTEX.lock();
-    std::cout << "feature camera points: ";
-    auto cameraPoints{getCameraPoints()};
-    std::for_each(cameraPoints.begin(), cameraPoints.end(), [](auto&& it) { std::cout << it << " "; });
-    std::cout << std::endl;
-    MUTEX.unlock();
-#endif
+    double top_length = pointPointDistance(m_centerR.m_center, m_armor.m_top);
+
+    bool reserve = false;
+    while (top_length != *lengths.begin()) {
+        std::swap(m_armor.m_top, m_armor.m_left);
+        std::swap(m_armor.m_right, m_armor.m_left);
+        std::swap(m_armor.m_in, m_armor.m_left);
+        top_length = pointPointDistance(m_centerR.m_center, m_armor.m_top);
+        reserve = true;
+    }
+
+    if (top_length != *lengths.begin() && reserve == true) {
+        perror("point error\n ");
+    }
 }
 
 /**
@@ -359,6 +323,45 @@ void findArrowLightlines(const cv::Mat& binary, std::vector<Lightline>& lightlin
         // 符合要求，则存入
         lightlines.emplace_back(std::move(lightline));
     }
+}
+
+std::vector<std::vector<PolarPoint>> getCombinationsIterative(
+    const std::vector<std::vector<PolarPoint>>& input) {
+    std::vector<std::vector<PolarPoint>> result;
+    int n = input.size();
+    // 检查是否存在空子容器
+    for (const auto& sub : input) {
+        if (sub.empty()) return result;
+    }
+    if (n == 0) {
+        result.push_back({});  // 空输入返回一个空组合
+        return result;
+    }
+    std::vector<size_t> indexes(n, 0);
+    bool hasNext = true;
+    while (hasNext) {
+        std::vector<PolarPoint> current;
+        for (int i = 0; i < n; ++i) {
+            current.push_back(input[i][indexes[i]]);
+        }
+        result.push_back(current);
+        // 更新索引，模拟进位
+        hasNext = false;
+        for (int i = n - 1; i >= 0; --i) {
+            indexes[i]++;
+            if (indexes[i] >= input[i].size()) {
+                indexes[i] = 0;
+                if (i == 0) {
+                    hasNext = false;
+                    break;
+                }
+            } else {
+                hasNext = true;
+                break;
+            }
+        }
+    }
+    return result;
 }
 
 /**
@@ -487,6 +490,37 @@ bool findArmorLightlines(const cv::Mat& image, std::vector<Lightline>& lightline
     return true;
 }
 
+bool matchPoints(std::vector<PolarPoint>& points) {
+    std::sort(points.begin(), points.end(), [](PolarPoint p1, PolarPoint p2) { return p1.theta < p2.theta; });
+    for (size_t i = 0; i < points.size() - 1; i++) {
+        double error = abs(points[i].theta - points[i + 1].theta);
+        if (inRange(error, Param::POINT_POINT_THETA_THRESHOLD_MIN, Param::POINT_POINT_THETA_THRESHOLD_MAX) ==
+            false) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool matchPoints(std::vector<PolarPoint>& points, double& ratio) {
+    std::sort(points.begin(), points.end(), [](PolarPoint p1, PolarPoint p2) { return p1.theta < p2.theta; });
+    double error_max = -1.0, error_min = 2000.0;
+    for (size_t i = 0; i < points.size() - 1; i++) {
+        double error = abs(points[i].theta - points[i + 1].theta);
+        if (error < error_min) {
+            error_min = error;
+        } else if (error > error_max) {
+            error_max = error;
+        }
+        if (inRange(error, Param::POINT_POINT_THETA_THRESHOLD_MIN, Param::POINT_POINT_THETA_THRESHOLD_MAX) ==
+            false) {
+            return false;
+        }
+    }
+    ratio = error_max / error_min;
+    return true;
+}
+
 /**
  * @brief 根据提取的灯条匹配装甲板，成功返回 true，否则返回 false
  * @param[in] frames        边框灯条
@@ -496,21 +530,71 @@ bool findArmorLightlines(const cv::Mat& image, std::vector<Lightline>& lightline
  * @return true
  * @return false
  */
-bool findArmor(Armor& armor, const std::vector<Lightline>& frames, const Arrow& arrow) {
-    std::vector<int> labels;
-    // 使用 sameArmor 函数匹配
-    cv::partition(frames, labels, sameArmor);
-    for (size_t i = 0; i < labels.size() - 1; ++i) {
-        for (size_t j = i + 1; j < labels.size(); ++j) {
-            if (labels[i] == labels[j]) {
-                cv::Point2f center = 0.5 * (frames.at(i).m_center + frames.at(j).m_center);
-                // 此处判断装甲板中心与箭头中心的距离，如果不符则检测失败
-                if (inRange(pointPointDistance(center, arrow.m_center), arrow.m_length * 0.8,
-                            arrow.m_length * 1.5)) {
-                    armor.set(frames[i], frames[j]);
-                    return true;
-                }
+bool findArmor(Armor& armor, std::vector<ArmorContour>& armor_contours, const Arrow& arrow) {
+    for (auto& armor_contour : armor_contours) {
+        std::vector<cv::Point> approx;
+        double epsilon = 0.02 * cv::arcLength(armor_contour.m_contour, true);
+        cv::approxPolyDP(armor_contour.m_contour, approx, epsilon, true);
+        for (auto& pt : approx) {
+            double dx = pt.x - armor_contour.center.x;
+            double dy = pt.y - armor_contour.center.y;
+            double theta = radian2Angle(std::atan2(dy, dx));  // 范围: (-pi, pi)
+            double rho = std::sqrt(dx * dx + dy * dy);
+            armor_contour.polarPoints.emplace_back(theta, rho, cv::Point2f(pt.x, pt.y));
+        }
+        std::sort(armor_contour.polarPoints.begin(), armor_contour.polarPoints.end(),
+                  [](PolarPoint p1, PolarPoint p2) { return p1.rho > p2.rho; });
+
+        auto backup = armor_contour.polarPoints;
+        armor_contour.polarPoints.resize(4);
+
+        bool is_error = false;
+        for (size_t i = 0; i < 3; i++) {
+            if (abs(pointPointDistance(armor_contour.polarPoints[i].pt,
+                                       armor_contour.polarPoints[i + 1].pt)) < 30) {
+                is_error = true;
             }
+        }
+        if (is_error || !matchPoints(armor_contour.polarPoints)) {
+            // group points
+            auto samePoint = [armor_contour](const PolarPoint p1, const PolarPoint p2) {
+                double distance = pointPointDistance(p1.pt, p2.pt);
+                return distance < sqrt(armor_contour.m_contourArea) / 2.2;
+            };
+            armor_contour.polarPoints = backup;
+            std::vector<int> labels;
+            cv::partition(armor_contour.polarPoints, labels, samePoint);
+            int num = *std::max_element(labels.begin(), labels.end());
+            if (num == 3) {
+                std::vector<std::vector<PolarPoint>> points(num + 1);  // default is 4 rows 2 cols
+                for (size_t i = 0; i < labels.size(); i++) {
+                    points[labels[i]].emplace_back(armor_contour.polarPoints.at(i));
+                }
+                for (size_t i = 0; i < points.size(); ++i) {
+                    std::sort(points[i].begin(), points[i].end(),
+                              [](PolarPoint p1, PolarPoint p2) { return p1.rho > p2.rho; });
+                }
+                std::vector<std::vector<PolarPoint>> tmp = getCombinationsIterative(points);
+                double min_ratio = 2000.0, index = -1;
+                for (size_t i = 0; i < tmp.size(); i++) {
+                    double ratio = 0;
+                    if (matchPoints(tmp[i], ratio)) {
+                        if (ratio < min_ratio) {
+                            min_ratio = ratio;
+                            index = i;
+                        }
+                    }
+                }
+                if (index == -1) continue;
+                armor_contour.polarPoints = tmp[index];
+            }
+            continue;
+        }
+        if (armor_contour.calcSrcPointsAndCenter() == false) return false;
+        double distance = pointPointDistance(armor_contour.center, arrow.m_center);
+        if (inRange(distance, arrow.m_length * 0.33, arrow.m_length * 3.0)) {
+            armor.set(armor_contour.polarPoints, armor_contour.center);
+            return true;
         }
     }
     return false;
@@ -589,15 +673,13 @@ bool findCenterLightlines(const cv::Mat& image, std::vector<Lightline>& lightlin
 bool findCenterR(CenterR& center, const std::vector<Lightline>& lightlines, const Arrow& arrow,
                  const Armor& armor) {
     // 设置中心 R 到外侧装甲板灯条的距离范围
-    // 不用到内侧装甲板灯条的位置的原因是内侧装甲板灯条识别的时候可能和箭头灯条连在一起导致距离出现误差
-    const double distance2OutsideArmor{(armor.m_outside.m_length + armor.m_inside.m_length) *
-                                       Param::POWER_RUNE_RADIUS * 1.13 /
-                                       (Param::ARMOR_OUTSIDE_WIDTH + Param::ARMOR_INSIDE_WIDTH)};
+    const double distance2OutsideArmor{armor.m_radius * Param::POWER_RUNE_RADIUS * 1.13 /
+                                       Param::LEAF_RADIUS};  // 改为扇叶半径与实际的比例
     const double ratio = 0.85;
     const double maxDistance2OutsideArmor{distance2OutsideArmor / ratio};
     const double minDistance2OutsideArmor{distance2OutsideArmor * ratio};
     // 设置中心 R 到箭头所在直线的最大距离
-    const double maxDistance2ArrowLine{0.3 * armor.m_inside.m_width};
+    const double maxDistance2ArrowLine{0.75 * arrow.m_length};
     std::vector<Lightline> filteredLightlines;
     for (auto iter = lightlines.begin(); iter != lightlines.end(); ++iter) {
         /**
@@ -605,11 +687,16 @@ bool findCenterR(CenterR& center, const std::vector<Lightline>& lightlines, cons
          * 所以在这里比较可能的中心灯条到装甲板内部灯条和外部灯条的距离，距离大的就是外部灯条。
          * 内外灯条的设置在 Detector::setArmor() 中设置
          */
-        cv::Point2f armorOutsideCenter = pointPointDistance(iter->m_center, armor.m_inside.m_center) >
-                                                 pointPointDistance(iter->m_center, armor.m_outside.m_center)
-                                             ? armor.m_inside.m_center
-                                             : armor.m_outside.m_center;
-        double p2p{pointPointDistance(iter->m_center, armorOutsideCenter)};
+        auto select_outsideCenter = [armor, iter]() {
+            double distance{-1.0};
+            for (auto& pt : armor.points) {
+                double tmp{pointPointDistance(pt.pt, iter->m_center)};
+                if (tmp > distance) distance = tmp;
+            }
+            return distance;
+        };
+
+        double p2p{select_outsideCenter()};
         double p2l{pointLineDistance(iter->m_center, armor.m_center, arrow.m_center)};
         // 判断到装甲板外部灯条的距离
         if (inRange(p2p, minDistance2OutsideArmor, maxDistance2OutsideArmor) == false) {
@@ -662,7 +749,32 @@ void resetRoi(cv::Rect2f& rect, int rows, int cols) {
 }
 
 void resetRoi(cv::Rect2f& rect, const cv::Rect2f& lastRoi) { resetRoi(rect, lastRoi.height, lastRoi.width); }
-
+bool Detector::findArmorContours(const cv::Mat& image, std::vector<ArmorContour>& armor_contours,
+                                 const cv::Rect2f& globalRoi, const cv::Rect2f& localRoi) {
+    // 轮廓检测
+    cv::imshow("armor roi",image);
+    cv::waitKey(10);
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(image, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    for (auto contour : contours) {
+        ArmorContour armor_contour(contour, globalRoi, localRoi);
+       // printf("contour area: %.2f \n",armor_contour.m_contourArea);
+        if (inRange(armor_contour.m_contourArea, Param::armor_contour_area_min,
+                    Param::armor_contour_area_max) == false) {
+            continue;
+        }
+        if (inRange(armor_contour.m_aspectRatio, Param::area_ratio_min, Param::area_ratio_max) == false) {
+            continue;
+        }
+        armor_contours.emplace_back(armor_contour);
+    }
+    if (armor_contours.empty()) {
+        return false;
+    }
+    std::sort(armor_contours.begin(), armor_contours.end(),
+              [](ArmorContour c1, ArmorContour c2) { return c1.m_contourArea > c2.m_contourArea; });
+    return true;
+}
 /**
  * @brief 计算两个灯条长边的夹角
  * @param[in] l1
@@ -745,44 +857,6 @@ Lightline::Lightline(const std::vector<cv::Point>& contour, const cv::Rect2f& lo
     m_br += localRoi.tl() + globalRoi.tl();
     m_center += localRoi.tl() + globalRoi.tl();
     m_x = m_center.x, m_y = m_center.y;
-}
-
-/**
- * @brief 设置装甲板参数
- * @param[in] l1
- * @param[in] l2
- */
-void Armor::set(const Lightline& l1, const Lightline& l2) {
-    if (l1.m_contourArea > l2.m_contourArea) {
-        m_inside = l1;
-        m_outside = l2;
-    } else {
-        m_outside = l1;
-        m_inside = l2;
-    }
-    m_center = (m_inside.m_center + m_outside.m_center) * 0.5;
-    m_x = m_center.x, m_y = m_center.y;
-    m_tlIn = m_inside.m_tl;
-    m_trIn = m_inside.m_tr;
-    m_blIn = m_inside.m_bl;
-    m_brIn = m_inside.m_br;
-    m_tlOut = m_outside.m_tl;
-    m_trOut = m_outside.m_tr;
-    m_blOut = m_outside.m_bl;
-    m_brOut = m_outside.m_br;
-    return;
-}
-
-/**
- * @brief
- * 设置装甲板角点，注意大小为4，顺序必须为内部灯条左上角点、内部灯条右上角点、外部灯条左下角点、外部灯条右下角点
- * @param[in] points        输入的角点向量
- */
-void Armor::setCornerPoints(const std::vector<cv::Point2f>& points) {
-    m_tlIn = points.at(0);
-    m_trIn = points.at(1);
-    m_blOut = points.at(2);
-    m_brOut = points.at(3);
 }
 
 /**

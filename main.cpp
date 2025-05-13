@@ -2,7 +2,7 @@
 
 #include "PowerRune.h"
 
-#define VIDEO_PATH "../example.mp4"
+#define VIDEO_PATH "/home/dfg/backup/RM2025_VISION/backup/rm_power_rune/Video_20250513124934331.avi"
 
 int main() {
     power_rune::PowerRune pr;
