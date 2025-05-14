@@ -2,7 +2,7 @@
 
 #include "PowerRune.h"
 
-#define VIDEO_PATH "../Video_20250513124934331.avi"
+#define VIDEO_PATH "../Video_20250513124845562.avi"
 
 int main() {
     power_rune::PowerRune pr;

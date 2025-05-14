@@ -24,6 +24,8 @@ Detector::Detector()
  */
 bool Detector::detect(const Frame& frame) {
     bool reverse = false;
+    std::vector<cv::Point2f> pts;
+    std::vector<cv::Scalar> scalars{Param::WHITE,Param::PURPLE,Param::GREEN,Param::BLUE};
     preprocess(frame);
     if (detectArrow() == false) {
         m_status = Status::ARROW_FAILURE;
@@ -48,6 +50,14 @@ RESTART:
     setArmor();
     setGlobalRoi();
     m_status = Status::SUCCESS;
+    pts=this->getCameraPoints();
+    
+    for (size_t i = 0; i < 4; i++)
+    {
+        cv::circle(m_imageShow,cv::Point(pts[i].x,pts[i].y),2,scalars[i],-1);
+    }
+    cv::imshow("keypoint",m_imageShow);
+    cv::waitKey(0);
     return true;
 FAIL:
     // 如果检测失败，则将全局 roi 设为和原图片一样大小
@@ -533,7 +543,7 @@ bool matchPoints(std::vector<PolarPoint>& points, double& ratio) {
 bool findArmor(Armor& armor, std::vector<ArmorContour>& armor_contours, const Arrow& arrow) {
     for (auto& armor_contour : armor_contours) {
         std::vector<cv::Point> approx;
-        double epsilon = 0.02 * cv::arcLength(armor_contour.m_contour, true);
+        double epsilon = 0.01 * cv::arcLength(armor_contour.m_contour, true);
         cv::approxPolyDP(armor_contour.m_contour, approx, epsilon, true);
         for (auto& pt : approx) {
             double dx = pt.x - armor_contour.center.x;

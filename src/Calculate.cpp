@@ -82,6 +82,7 @@ bool Calculator::matrixCal() {
     m_matW2R = m_matG2R * m_matC2G * m_matW2C;
     m_rMatW2R = m_matW2R(cv::Rect(0, 0, 3, 3));
     m_distance2Target = cv::norm(m_matW2C.col(3)) * 1e-3;
+    //printf("%f\n",m_distance2Target);
     if (inRange<double>(m_distance2Target, Param::MIN_DISTANCE_TO_TARGET, Param::MAX_DISTANCE_TO_TARGET) ==
         false) {
         return false;
@@ -213,6 +214,8 @@ bool Calculator::predict() {
     auto [predictPitch, predictYaw] = getPitchYawFromRobotCoor(m_predictRobot, m_bulletSpeed);
     m_predictPitch = predictPitch;
     m_predictYaw = predictYaw;
+    // printf("x: %.2f y:%.2f z:%.2f \n", m_predictRobot.x / 1000, m_predictRobot.y / 1e3,
+    //        m_predictRobot.z / 1e3);
     m_predictPixel = getPixelFromRobot(m_predictRobot, m_matW2C, m_matW2R);
 #if CONSOLE_OUTPUT >= 2
     MUTEX.lock();
@@ -284,7 +287,7 @@ cv::Mat world2Camera(const std::vector<cv::Point3f> &worldPoints,
                      const cv::Mat &distCoeffs) {
     cv::Mat rVec, tVec, rMat;
     cv::solvePnP(worldPoints, cameraPoints, intrinsicMatrix, distCoeffs, rVec, tVec, false,
-                 cv::SOLVEPNP_ITERATIVE);
+                 cv::SOLVEPNP_IPPE);
     cv::Rodrigues(rVec, rMat);
     cv::Mat w2c{cv::Mat::zeros(cv::Size(4, 4), CV_64FC1)};
     for (int i = 0; i < 3; ++i) {

@@ -26,6 +26,8 @@ bool PowerRune::runOnce(const cv::Mat& image, double pitch, double yaw, double r
         return false;
     }
     auto cameraPoints{m_detector.getCameraPoints()};
+    
+    
     bool result = m_calculator.calculate(frame, cameraPoints);
 #if SHOW_IMAGE >= 1
     if (result == true) {

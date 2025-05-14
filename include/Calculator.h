@@ -149,6 +149,7 @@ std::pair<double, double> getPitchYawFromRobotCoor(const cv::Point3f &target, do
  */
 inline double getRotationAngleSmall(double distance, double bulletSpeed, double rotationSpeed,
                                     double compansate) noexcept {
+    //printf("timeoffset %f\n",(distance / bulletSpeed + compansate / 1e3));                                    
     return rotationSpeed * (distance / bulletSpeed + compansate / 1e3);
 }
 
@@ -175,6 +176,7 @@ inline double getRotationAngleBig(double distance, double bulletSpeed, const std
                                   double compansate, int64_t frameTime) noexcept {
     double predictTime{distance / bulletSpeed + (frameTime + compansate) * 1e-3};
     double currentTime{frameTime * 1e-3};
+    
     return getAngleBig(predictTime, params) - getAngleBig(currentTime, params);
 }
 

@@ -57,7 +57,7 @@ calculate:
   bullet_speed:
     min: 20
     default: 28
-  tvec_c2g: [-110.9, 13.42, 99.23]
+  tvec_c2g: [0, 0, 0]
   compansate:
     time: 75
     pitch: 0.0
@@ -66,12 +66,14 @@ calculate:
     rows: 3
     cols: 3
     dt: d
-    data: [2479.79773265868, 0, 624.843541232562, 0, 2478.98595904058, 516.678095396654, 0, 0, 1]
+    data: [1805.46663,    0.     ,  720.56741,
+            0.     , 1803.59436,  569.74359,
+            0.     ,    0.     ,    1.     ]
   distortion: !!opencv-matrix #Distortion
     rows: 5
     cols: 1
     dt: d  
-    data: [-0.0896322190932089, 0.486000473389527, 0, 0, 0]
+    data: [-0.085519, 0.158128, 0.001561, -0.000446, 0.000000]
   armor:
     outside:
       width: 345.5
